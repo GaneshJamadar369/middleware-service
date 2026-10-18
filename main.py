@@ -13,6 +13,7 @@ EMAIL = "23f3003450@ds.study.iitm.ac.in"
 # Include the exam page's actual origin if it differs.
 ALLOWED_ORIGINS = [
     "https://app-h6sqte.example.com",
+    "https://exam.sanand.workers.dev",
 ]
 
 RATE_LIMIT = 15
