@@ -8,33 +8,41 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+EMAIL = "23f3003450@ds.study.iitm.ac.in"
+
+# Include the exam page's actual origin if it differs.
+ALLOWED_ORIGINS = [
+    "https://app-h6sqte.example.com",
+]
+
+RATE_LIMIT = 15
+WINDOW_SECONDS = 10
+
 app = FastAPI()
 
-EMAIL = "23f3003450@ds.study.iitm.ac.in"
-ALLOWED_ORIGINS = ["https://app-h6sqte.example.com"]
-LIMIT = 15
-WINDOW = 10
-
-buckets = defaultdict(deque)
-lock = Lock()
+rate_buckets = defaultdict(deque)
+rate_lock = Lock()
 
 
 @app.middleware("http")
-async def request_context_and_rate_limit(request: Request, call_next):
+async def request_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    request.state.request_id = request_id
 
     if request.method != "OPTIONS":
         client_id = request.headers.get("X-Client-Id", "anonymous")
         now = time.monotonic()
 
-        with lock:
-            bucket = buckets[client_id]
-            while bucket and now - bucket[0] >= WINDOW:
+        with rate_lock:
+            bucket = rate_buckets[client_id]
+
+            while bucket and now - bucket[0] >= WINDOW_SECONDS:
                 bucket.popleft()
 
-            if len(bucket) >= LIMIT:
-                retry_after = max(1, int(WINDOW - (now - bucket[0]) + 0.999))
+            if len(bucket) >= RATE_LIMIT:
+                retry_after = max(
+                    1,
+                    int(WINDOW_SECONDS - (now - bucket[0]) + 0.999),
+                )
                 response = JSONResponse(
                     status_code=429,
                     content={"detail": "Rate limit exceeded"},
@@ -50,18 +58,20 @@ async def request_context_and_rate_limit(request: Request, call_next):
     return response
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
-    allow_headers=["X-Request-ID", "X-Client-Id", "Content-Type"],
-)
-
-
 @app.get("/ping")
 def ping(request: Request):
     return {
         "email": EMAIL,
-        "request_id": request.state.request_id,
+        "request_id": request.headers.get("X-Request-ID")
+        or getattr(request.state, "request_id", None),
     }
+
+
+# Register CORS last so it handles preflight before the rate limiter.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["X-Request-ID", "X-Client-Id", "Content-Type"],
+    allow_credentials=False,
+)
