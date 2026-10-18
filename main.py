@@ -25,9 +25,12 @@ rate_buckets = defaultdict(deque)
 rate_lock = Lock()
 
 
+
+
 @app.middleware("http")
 async def request_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request.state.request_id = request_id
 
     if request.method != "OPTIONS":
         client_id = request.headers.get("X-Client-Id", "anonymous")
@@ -47,9 +50,11 @@ async def request_middleware(request: Request, call_next):
                 response = JSONResponse(
                     status_code=429,
                     content={"detail": "Rate limit exceeded"},
-                    headers={"Retry-After": str(retry_after)},
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-Request-ID": request_id,
+                    },
                 )
-                response.headers["X-Request-ID"] = request_id
                 return response
 
             bucket.append(now)
@@ -57,6 +62,14 @@ async def request_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response
+
+
+@app.get("/ping")
+def ping(request: Request):
+    return {
+        "email": EMAIL,
+        "request_id": request.state.request_id,
+    }
 
 
 @app.get("/ping")
