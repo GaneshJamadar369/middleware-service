@@ -84,8 +84,12 @@ def ping(request: Request):
 # Register CORS last so it handles preflight before the rate limiter.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=[
+        "https://app-h6sqte.example.com",
+        "https://exam.sanand.workers.dev",
+    ],
     allow_methods=["GET", "OPTIONS"],
     allow_headers=["X-Request-ID", "X-Client-Id", "Content-Type"],
+    expose_headers=["X-Request-ID"],
     allow_credentials=False,
 )
